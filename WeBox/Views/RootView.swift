@@ -6,70 +6,70 @@ struct RootView: View {
     @EnvironmentObject private var library: LibraryStore
     var body: some View {
         TabView {
-            NavigationStack { SourcesView() }.tabItem { Label("内容源", systemImage: "square.grid.2x2") }
+            NavigationStack { DiscoverView() }.tabItem { Label("发现", systemImage: "sparkles.tv") }
             NavigationStack { SavedListView(history: false) }.tabItem { Label("收藏", systemImage: "heart") }
-            NavigationStack { SavedListView(history: true) }.tabItem { Label("历史", systemImage: "clock") }
             NavigationStack { DownloadsView() }.tabItem { Label("下载", systemImage: "arrow.down.circle") }
             NavigationStack { SettingsView() }.tabItem { Label("设置", systemImage: "gearshape") }
         }
-        .tint(.mint)
+        .tint(WeBoxTheme.accent)
         .alert("提示", isPresented: Binding(get: { library.error != nil }, set: { if !$0 { library.error = nil } })) {
             Button("知道了") { library.error = nil }
         } message: { Text(library.error ?? "") }
     }
 }
+
 struct SourcesView: View {
     @EnvironmentObject private var library: LibraryStore
     @State private var importing = false
     @State private var fileImporter = false
+    @State private var importingFile = false
     var body: some View {
         List {
             Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 14) {
-                        Image("WeBoxIcon").resizable().frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 12))
-                        Text("你的内容，由你连接。").font(.title2.bold())
+                HStack(spacing: 14) {
+                    Image("WeBoxIcon").resizable().frame(width: 54, height: 54).clipShape(RoundedRectangle(cornerRadius: 12))
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("连接你的内容").font(.headline)
+                        Text("统一管理脚本、直播和影视接口。").font(.subheadline).foregroundStyle(.secondary)
                     }
-                    Text("添加 JavaScript 内容源，浏览片单与播放视频。").font(.subheadline).foregroundStyle(.secondary)
-                }.padding(.vertical, 18).listRowBackground(Color.mint.opacity(0.08))
+                }.padding(.vertical, 8)
             }
             Section("已安装 · \(library.sources.count)") {
                 ForEach(library.sources) { source in
-                    NavigationLink {
-                        BrowserView(source: source).id(source.id + source.version + String(source.installedAt.timeIntervalSince1970))
-                    } label: {
+                    NavigationLink { BrowserView(source: source).id(source.id + String(source.installedAt.timeIntervalSince1970)) } label: {
                         HStack(spacing: 14) {
-                            Image(systemName: source.origin == "bundled" ? "play.rectangle" : "curlybraces").font(.title2).foregroundStyle(.mint).frame(width: 42, height: 48)
+                            Image(systemName: source.origin == "bundled" ? "play.rectangle.fill" : "square.stack.3d.up.fill")
+                                .font(.title3).foregroundStyle(WeBoxTheme.accent).frame(width: 34, height: 44)
                             VStack(alignment: .leading, spacing: 5) {
                                 Text(source.title).font(.headline)
                                 Text("v\(source.version) · \(source.origin == "bundled" ? "内置公开示例" : "自定义内容源")").font(.caption).foregroundStyle(.secondary)
                             }
-                        }.padding(.vertical, 8)
+                        }.padding(.vertical, 4)
                     }
-                    .swipeActions {
-                        Button("删除", role: .destructive) { library.remove(source) }
-                    }
+                    .swipeActions { Button("删除", role: .destructive) { library.remove(source) } }
                     .contextMenu {
-                        NavigationLink("内容源配置") { SourceSettingsView(source: source) }
+                        NavigationLink { SourceSettingsView(source: source) } label: { Label("内容源配置", systemImage: "slider.horizontal.3") }
                         ShareLink(item: source.code) { Label("分享脚本", systemImage: "square.and.arrow.up") }
                     }
                 }
-                if library.sources.isEmpty { ContentUnavailableView("还没有内容源", systemImage: "curlybraces", description: Text("点右上角添加 JS 文件或链接")) }
+                if library.sources.isEmpty { ContentUnavailableView("还没有内容源", systemImage: "square.stack.3d.up", description: Text("添加文件、链接或文本后即可开始浏览。")) }
             }
-        }
-        .navigationTitle("WeBox")
-        .toolbar {
-            Menu {
-                Button("从链接或文本添加", systemImage: "link") { importing = true }
-                Button("导入 JS / iOS 备份", systemImage: "doc.badge.plus") { fileImporter = true }
-            } label: { Image(systemName: "plus.circle.fill") }
-        }
+        }.navigationTitle("内容源").navigationBarTitleDisplayMode(.inline).toolbar(.visible, for: .navigationBar)
+        .toolbar { Menu {
+            Button("链接或文本", systemImage: "link") { importing = true }
+            Button("从文件导入", systemImage: "doc.badge.plus") { fileImporter = true }
+        } label: { Image(systemName: "plus") }.disabled(importingFile) }
         .sheet(isPresented: $importing) { ImportSourceView() }
         .fileImporter(isPresented: $fileImporter, allowedContentTypes: [.javaScript, .json, .plainText, .data]) { result in
-            do { try library.importFile(result.get()) } catch { library.error = error.localizedDescription }
+            Task {
+                importingFile = true; defer { importingFile = false }
+                do { try await library.importFileAsync(result.get()) } catch { library.error = error.localizedDescription }
+            }
         }
+        .overlay { if importingFile { ProgressView("正在导入内容源…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: WeBoxTheme.radius)) } }
     }
 }
+
 struct ImportSourceView: View {
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
@@ -78,83 +78,140 @@ struct ImportSourceView: View {
     @State private var code = ""
     @State private var busy = false
     @State private var error: String?
+    @State private var fileImporter = false
     var body: some View {
         NavigationStack {
             Form {
-                Picker("添加方式", selection: $mode) { Text("链接").tag(0); Text("脚本文本").tag(1) }.pickerStyle(.segmented)
-                if mode == 0 { TextField("https://example.com/source.js", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL) }
-                else { TextEditor(text: $code).font(.system(.caption, design: .monospaced)).frame(minHeight: 250).autocorrectionDisabled().textInputAutocapitalization(.never) }
-                Section { Text("脚本可发起网络请求及保存本地数据，请仅添加你信任的内容源。支持明文 WeBox / Widget / XPTV 脚本；暂不支持加密源与订阅集合。").font(.footnote).foregroundStyle(.secondary) }
-                if let error { Text(error).foregroundStyle(.red) }
+                Section {
+                    Picker("添加方式", selection: $mode) { Text("链接").tag(0); Text("文本").tag(1); Text("文件").tag(2) }.pickerStyle(.segmented)
+                    if mode == 0 {
+                        TextField("https://example.com/source.js", text: $address).textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
+                            .frame(minHeight: 44)
+                    } else if mode == 1 {
+                        TextEditor(text: $code).font(.system(.caption, design: .monospaced)).frame(minHeight: 220).autocorrectionDisabled().textInputAutocapitalization(.never)
+                    } else {
+                        Button { fileImporter = true } label: { Label("从“文件”中选择", systemImage: "folder").frame(minHeight: 44) }
+                    }
+                } header: { Text("添加内容源") } footer: {
+                    Text("支持 JS 脚本、订阅、M3U 直播及 VOD 接口配置。加密源会按其授权协议处理。")
+                }
+                Section {
+                    Label("只添加你信任的内容源", systemImage: "checkmark.shield").font(.subheadline.weight(.semibold))
+                    Text("脚本可访问网络并保存数据。内容源配置和备份可能包含账号信息，请妥善保管。").font(.footnote).foregroundStyle(.secondary)
+                }
+                if let error {
+                    Section("导入未完成") {
+                        Text(error).font(.subheadline).textSelection(.enabled)
+                        ShareLink(item: error) { Label("分享错误信息", systemImage: "square.and.arrow.up") }
+                    }
+                }
             }
             .navigationTitle("添加内容源").navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(busy) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button { Task {
-                        busy = true; error = nil
-                        do { if mode == 0 { try await library.importURL(address) } else { try library.install(code: code, origin: "pasted") }; dismiss() }
-                        catch { self.error = error.localizedDescription }
-                        busy = false
-                    } } label: { if busy { ProgressView() } else { Text("添加") } }
-                    .disabled(busy || (mode == 0 ? address : code).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    if mode != 2 {
+                        Button { Task { await performImport() } } label: { if busy { ProgressView() } else { Text("添加").bold() } }
+                            .disabled(busy || (mode == 0 ? address : code).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
                 }
             }
+            .fileImporter(isPresented: $fileImporter, allowedContentTypes: [.javaScript, .json, .plainText, .data]) { result in
+                Task {
+                    busy = true; error = nil; defer { busy = false }
+                    do { try await library.importFileAsync(result.get()); dismiss() } catch { self.error = error.localizedDescription }
+                }
+            }
+            .overlay { if busy && mode == 2 { ProgressView("正在处理文件…").padding(24).background(.regularMaterial, in: RoundedRectangle(cornerRadius: WeBoxTheme.radius)) } }
             .interactiveDismissDisabled(busy)
         }
     }
+    @MainActor private func performImport() async {
+        busy = true; error = nil; defer { busy = false }
+        do {
+            if mode == 0 { try await library.importURL(address) }
+            else { try await library.importText(code, origin: "pasted") }
+            dismiss()
+        } catch { self.error = error.localizedDescription }
+    }
 }
+
 struct SavedListView: View {
     @EnvironmentObject private var library: LibraryStore
     let history: Bool
     var body: some View {
         let rows = history ? library.history : library.favorites
         List {
-            if rows.isEmpty { ContentUnavailableView(history ? "还没有观看记录" : "还没有收藏", systemImage: history ? "clock" : "heart") }
-            ForEach(rows) { saved in
-                if let source = library.source(saved.sourceID) {
-                    NavigationLink { DetailView(source: source, item: saved.item) } label: {
-                        HStack {
-                            PosterView(address: saved.item.poster).frame(width: 52, height: 70).clipShape(RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(saved.item.title).font(.headline)
-                                Text(source.title).font(.caption).foregroundStyle(.secondary)
-                                if history { Text("\(saved.date.formatted(date: .abbreviated, time: .shortened)) · \(Int(saved.position)) 秒").font(.caption2).foregroundStyle(.secondary) }
-                            }
+            if !history {
+                Section { NavigationLink { SavedListView(history: true) } label: { Label("观看历史", systemImage: "clock.arrow.circlepath") } }
+            }
+            Section {
+                if rows.isEmpty { ContentUnavailableView(history ? "还没有观看记录" : "把想看的故事留在这里", systemImage: history ? "clock" : "heart", description: Text(history ? "开始播放后，会为你记录观看进度。" : "在影片详情页轻点收藏，下一次更容易找到。")) }
+                ForEach(rows) { saved in
+                    if let source = library.source(saved.sourceID) {
+                        NavigationLink { DetailView(source: source, item: saved.item) } label: {
+                            MediaListRow(item: saved.item, subtitle: history ? "\(source.title) · 已看到 \(Int(saved.position / 60)) 分钟" : source.title)
                         }
+                    } else {
+                        MediaListRow(item: saved.item, subtitle: "原内容源已移除，重新添加后即可打开")
                     }
-                } else {
-                    VStack(alignment: .leading) { Text(saved.item.title); Text("原内容源已移除，请重新安装后打开").font(.caption).foregroundStyle(.secondary) }
                 }
             }
         }.navigationTitle(history ? "观看历史" : "我的收藏")
         .toolbar { if history && !rows.isEmpty { Button("清空", role: .destructive) { library.clearHistory() } } }
     }
 }
+
 struct SettingsView: View {
     @EnvironmentObject private var library: LibraryStore
     @State private var backupURL: URL?
+    @State private var importing = false
+    @State private var fileImporter = false
+    @AppStorage("webox.tmdb.service") private var tmdbService = "https://api.themoviedb.org/3"
+    @AppStorage("webox.tmdb.apiKey") private var tmdbKey = ""
+    @AppStorage("webox.tmdb.language") private var tmdbLanguage = "zh-CN"
     var body: some View {
         Form {
-            Section("资料管理") {
-                Button("生成 iOS 备份") { do { backupURL = try library.exportBackup() } catch { library.error = error.localizedDescription } }
-                if let backupURL { ShareLink(item: backupURL) { Label("导出备份文件", systemImage: "square.and.arrow.up") } }
-                Text("备份包含内容源脚本、配置、收藏与历史。源配置可能包含密钥，请妥善保存。可从内容源页导入 iOS 备份。").font(.footnote).foregroundStyle(.secondary)
+            Section {
+                HStack(spacing: 14) {
+                    Image("WeBoxIcon").resizable().frame(width: 58, height: 58).clipShape(RoundedRectangle(cornerRadius: 14))
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("WeBox").font(.title3.bold())
+                        Text("你的影视，井然有序。").font(.subheadline).foregroundStyle(.secondary)
+                    }
+                }.padding(.vertical, 8)
             }
-            Section("播放与兼容性") {
-                LabeledContent("播放器", value: "AVPlayer · AirPlay · 画中画")
-                LabeledContent("内容源", value: "WeBox / Widget / XPTV")
-                Text("支持 iOS 原生可解码的视频及 HLS。自定义请求头由 AVURLAsset 传递，部分服务器可能不兼容。Android mpv 专有格式、内存 HLS、媒体处理器、binary、compute、TMDB 主机接口、RSA、REXENC 及 Android 备份尚未移植。").font(.footnote).foregroundStyle(.secondary)
+            Section("内容与资料") {
+                NavigationLink { SourcesView() } label: { Label("内容源管理", systemImage: "square.stack.3d.up") }
+                Button { importing = true } label: { Label("添加内容源", systemImage: "plus.circle") }
+                Button { do { backupURL = try library.exportBackup() } catch { library.error = error.localizedDescription } } label: { Label("生成备份", systemImage: "arrow.up.doc") }
+                if let backupURL { ShareLink(item: backupURL) { Label("导出备份文件", systemImage: "square.and.arrow.up") } }
+                Button { fileImporter = true } label: { Label("从备份恢复", systemImage: "arrow.down.doc") }
+            }
+            Section {
+                TextField("服务地址", text: $tmdbService).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                SecureField("API Key / Bearer Token", text: $tmdbKey).textInputAutocapitalization(.never).autocorrectionDisabled()
+                TextField("语言", text: $tmdbLanguage).textInputAutocapitalization(.never).autocorrectionDisabled()
+            } header: { Text("TMDB 元数据") } footer: { Text("需要元数据服务的内容源可使用你的 API 凭证。未填写时不会自动请求该服务。") }
+            Section("播放") {
+                LabeledContent("原生播放", value: "AirPlay · 画中画")
+                Text("播放页面可切换线路、调整倍速与画面比例。不同服务器和视频编码的可用功能可能不同。").font(.footnote).foregroundStyle(.secondary)
             }
             Section("关于") {
-                LabeledContent("WeBox for iOS", value: "0.1.0")
-                Text("基于 WeBox Android 0.1.64 的静态分析实现。此版本为移植预览版，未验证与所有第三方源兼容。").font(.footnote).foregroundStyle(.secondary)
-                Link("项目与构建产物", destination: URL(string: "https://github.com/zhangx16/WeBox-for-IOS")!)
-                NavigationLink("开源许可") { ScrollView { Text(ScriptRuntime.resource("web-licenses", "txt")).font(.caption.monospaced()).padding() }.navigationTitle("开源许可") }
+                LabeledContent("版本", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
+                Link(destination: URL(string: "https://github.com/zhangx16/WeBox-for-IOS/releases")!) { Label("版本与下载", systemImage: "arrow.up.right.square") }
+                NavigationLink("开源许可") {
+                    ScrollView { Text(ScriptRuntime.resource("web-licenses", "txt")).font(.caption.monospaced()).padding() }.navigationTitle("开源许可")
+                }
             }
         }.navigationTitle("设置")
+        .sheet(isPresented: $importing) { ImportSourceView() }
+        .fileImporter(isPresented: $fileImporter, allowedContentTypes: [.json, .data]) { result in
+            Task { do { try await library.importFileAsync(result.get()) } catch { library.error = error.localizedDescription } }
+        }
     }
 }
+
 struct SourceSettingsView: View {
     @EnvironmentObject private var library: LibraryStore
     @Environment(\.dismiss) private var dismiss
@@ -168,10 +225,10 @@ struct SourceSettingsView: View {
                 if fields.isEmpty { Text("此内容源没有声明全局配置").foregroundStyle(.secondary) }
                 ForEach(fields) { field in ParameterField(parameter: field, value: Binding(get: { values[field.id] ?? field.value }, set: { values[field.id] = $0 })) }
             }
-            if let error { Text(error).foregroundStyle(.red) }
-            Section { Text("保存后重新进入内容源以应用配置。").font(.footnote) }
-        }.navigationTitle("内容源配置")
-        .toolbar { Button("保存") { library.updateSettings(source.id, values: values); dismiss() } }
+            if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
+            Section { Text("保存后，返回内容源并重新加载以应用配置。").font(.footnote) }
+        }.navigationTitle("内容源配置").navigationBarTitleDisplayMode(.inline)
+        .toolbar { Button("保存") { library.updateSettings(source.id, values: values); dismiss() }.bold() }
         .task {
             values = source.settings
             do {
@@ -188,7 +245,7 @@ struct ParameterField: View {
     var body: some View {
         if !parameter.options.isEmpty {
             Picker(parameter.title, selection: $value) { ForEach(parameter.options, id: \.value) { option in Text(option.title).tag(option.value) } }
-        } else if parameter.type == "secret" { SecureField(parameter.title, text: $value).textInputAutocapitalization(.never) }
+        } else if parameter.type == "secret" { SecureField(parameter.title, text: $value).textInputAutocapitalization(.never).autocorrectionDisabled() }
         else if parameter.type == "boolean" { Toggle(parameter.title, isOn: Binding(get: { value == "true" }, set: { value = $0 ? "true" : "false" })) }
         else { TextField(parameter.title, text: $value, axis: .vertical).textInputAutocapitalization(.never).autocorrectionDisabled() }
     }
@@ -196,8 +253,16 @@ struct ParameterField: View {
 struct PosterView: View {
     let address: String
     var body: some View {
-        AsyncImage(url: URL(string: address)) { image in image.resizable().scaledToFill() } placeholder: {
-            ZStack { Color.mint.opacity(0.09); Image(systemName: "play.rectangle").font(.largeTitle).foregroundStyle(.mint.opacity(0.5)) }
+        GeometryReader { geometry in
+            AsyncImage(url: URL(string: address)) { phase in
+                if let image = phase.image { image.resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped() }
+                else {
+                    ZStack {
+                        Rectangle().fill(Color.secondary.opacity(0.09))
+                        Image(systemName: "play.rectangle").font(.system(size: 26, weight: .light)).foregroundStyle(.tertiary)
+                    }
+                }
+            }
         }.clipped()
     }
 }
@@ -207,13 +272,24 @@ struct DownloadsView: View {
     var body: some View {
         List {
             if let status = library.downloadStatus {
-                HStack { ProgressView(); Text(status); Spacer(); Button("取消") { library.cancelDownload() } }
+                Section { HStack(spacing: 12) { ProgressView(); Text(status).font(.subheadline); Spacer(); Button("取消") { library.cancelDownload() } } }
             }
-            if library.downloads.isEmpty { ContentUnavailableView("暂无离线视频", systemImage: "arrow.down.circle", description: Text("在播放线路中选择下载 MP4/MOV/M4V 直链")) }
-            ForEach(library.downloads) { item in
-                Button { localPlayback = item } label: { Label(item.title, systemImage: "play.circle") }
+            Section {
+                if library.downloads.isEmpty { ContentUnavailableView("把故事带在身边", systemImage: "arrow.down.circle", description: Text("在影片播放线路中选择下载，离线时也能继续观看。")) }
+                ForEach(library.downloads) { item in
+                    Button { localPlayback = item } label: {
+                        HStack(spacing: 14) {
+                            Image(systemName: "play.rectangle.fill").font(.title2).foregroundStyle(WeBoxTheme.accent).frame(width: 38)
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(item.title).font(.headline).foregroundStyle(.primary)
+                                Text(item.date.formatted(date: .abbreviated, time: .omitted)).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer(); Image(systemName: "play.circle").font(.title3)
+                        }.padding(.vertical, 6)
+                    }
                     .swipeActions { Button("删除", role: .destructive) { library.removeDownload(item) } }
                     .contextMenu { ShareLink(item: library.localURL(item)) { Text("分享文件") } }
+                }
             }
         }.navigationTitle("下载")
         .sheet(item: $localPlayback) { item in LocalPlayerView(url: library.localURL(item), title: item.title) }

@@ -6,3 +6,5 @@ xcuserdata/
 *.ipa
 *.apk
 .env
+TestFixtures/*
+!TestFixtures/.gitkeep

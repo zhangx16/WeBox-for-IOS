@@ -108,9 +108,9 @@ final class RuntimeTests: XCTestCase {
 
     @MainActor
     func testUnsupportedCapabilityFailsExplicitly() throws {
-        let code = "WeBox.define({api:'1.0',id:'test.unsupported',name:'Bad',version:'1.0.0',requires:['binary'],list:async()=>{},detail:async()=>{},play:async()=>{}})"
+        let code = "WeBox.define({api:'1.0',id:'test.unsupported',name:'Bad',version:'1.0.0',requires:['futureUnsupportedCapability'],list:async()=>{},detail:async()=>{},play:async()=>{}})"
         XCTAssertThrowsError(try ScriptRuntime(source: ScriptSource(id: "test", title: "", version: "", code: code, origin: "test")))
-        XCTAssertThrowsError(try PlaySource(["manifest": "#EXTM3U", "baseUrl": "https://example.com"]))
+        XCTAssertThrowsError(try PlaySource(["url": "file:///invalid/media.mp4"]))
     }
 
     @MainActor

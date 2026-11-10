@@ -10,8 +10,8 @@ struct WeBoxApp: App {
     }
     var body: some Scene {
         WindowGroup {
-            RootView().environmentObject(library).preferredColorScheme(.dark)
-                .onOpenURL { url in do { try library.importFile(url) } catch { library.error = error.localizedDescription } }
+            RootView().environmentObject(library)
+                .onOpenURL { url in Task { do { try await library.importFileAsync(url) } catch { library.error = error.localizedDescription } } }
         }
     }
 }

@@ -1,17 +1,6 @@
 // Keep APK libraries unmodified; adapt advertised capabilities at the iOS boundary.
-Widget.capabilities = Object.freeze({protocol:'0.0.7',memoryHls:false,mediaProcessor:false,binary:false,compute:false});
-var __originalDefineIOS = WeBox.define;
-WeBox = Object.freeze({define:function(source) {
-  var unsupported = (source.requires || []).filter(function(x) { return ['html','crypto'].indexOf(x)<0; });
-  if (unsupported.length) throw new Error('此内容源需要尚未移植的能力：'+unsupported.join(', '));
-  var adapt = function(fn) { return typeof fn !== 'function' ? fn : function(ctx, request) {
-    var safe = Object.assign({},ctx,{capabilities:Object.freeze({html:true,crypto:true,memoryHls:false,mediaProcessor:false,binary:false,compute:false})});
-    return fn(Object.freeze(safe),request);
-  }; };
-  var copy = Object.assign({},source);
-  ['filters','list','detail','play','search'].forEach(function(k){if(copy[k])copy[k]=adapt(copy[k]);});
-  return __originalDefineIOS(copy);
-}});
+// All advertised interfaces below have native implementations (Worker, buffers, proxy).
+Widget.capabilities = Object.freeze({protocol:'0.0.7',memoryHls:true,mediaProcessor:true,binary:true,compute:true});
 var __transportSyncIOS = __nativeSync;
 __nativeSync = function(raw) {
   var call = JSON.parse(raw), p = call.params || {}, method = call.method;
@@ -43,6 +32,7 @@ __nativeSync = function(raw) {
     if(!fn)throw new Error('不支持的 HMAC 算法');
     result=fn(enc(p.inputEncoding).parse(p.text),enc(p.keyEncoding).parse(p.key)).toString(enc(p.outputEncoding||'hex'));
   } else if(method==='crypto.aes') {
+    if(String(p.mode||'CBC').toUpperCase()==='GCM')return __transportSyncIOS(raw);
     var mode=String(p.mode||'CBC').toUpperCase(), padding=String(p.padding||(String(p.mode).toUpperCase()==='CTR'?'NOPADDING':'PKCS7')).toUpperCase();
     if(padding==='PKCS5PADDING'||padding==='PKCS7PADDING')padding='PKCS7';
     if(!['CBC','ECB','CTR'].includes(mode)||!['PKCS7','NOPADDING','ZEROPADDING'].includes(padding))throw new Error('不支持的 AES 模式或填充');

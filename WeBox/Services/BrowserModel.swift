@@ -124,7 +124,7 @@ final class DetailModel: ObservableObject {
                 let result = try await runtime.invoke(function.isEmpty ? "loadResource" : function, arguments: [params])
                 let rows = result as? [[String: Any]] ?? (result as? [String: Any])?["sources"] as? [[String: Any]] ?? (result as? [String: Any]).map { [$0] } ?? []
                 var accepted: [PlaySource] = [], failures: [String] = []
-                for row in rows { do { accepted.append(try PlaySource(row)) } catch { failures.append(error.localizedDescription) } }
+                for row in rows { do { var stream = try PlaySource(row); stream.runtime = runtime; accepted.append(stream) } catch { failures.append(error.localizedDescription) } }
                 guard !accepted.isEmpty else { throw AppFailure(failures.first ?? "内容源未返回播放线路") }
                 streams = accepted
             }

@@ -6,6 +6,9 @@ import Security
 final class ScriptRuntime {
     let source: ScriptSource
     private let context: JSContext
+    private let binaryStore = BinaryStore()
+    private let computeService = ComputeService()
+    private var closed = false
     private var pending: [String: CheckedContinuation<String, Error>] = [:]
     private var requests: [String: Task<Void, Never>] = [:]
     private var deadlines: [String: Task<Void, Never>] = [:]
@@ -104,6 +107,7 @@ final class ScriptRuntime {
     var globals: [ScriptParameter] { (metadata["globalParams"] as? [[String: Any]] ?? []).map(ScriptParameter.init) }
     func invoke(_ name: String, arguments: [Any]) async throws -> Any {
         try Task.checkCancellation()
+        guard !closed else { throw AppFailure("脚本会话已关闭") }
         let id = UUID().uuidString
         let code = "__invokeIOS(" + (try jsonText(id)) + "," + (try jsonText(name)) + "," + (try jsonText(try jsonText(arguments))) + ");"
         let result: String = try await withTaskCancellationHandler {
@@ -127,6 +131,7 @@ final class ScriptRuntime {
         pending.removeValue(forKey: id)?.resume(throwing: AppFailure(message))
     }
     func close() {
+        closed = true; computeService.close(); binaryStore.clear()
         for task in requests.values { task.cancel() }; requests.removeAll()
         for task in timers.values { task.cancel() }; timers.removeAll()
         for task in deadlines.values { task.cancel() }; deadlines.removeAll()
@@ -135,12 +140,19 @@ final class ScriptRuntime {
         context.exceptionHandler = nil
     }
 
+    func mediaReadBinary(handle: String) throws -> Data { try binaryStore.read(handle) }
+    func mediaCreateBinary(_ data: Data) throws -> String { try binaryStore.create(data) }
+    func mediaReleaseBinary(handle: String) { binaryStore.release(handle) }
+
     private func handleSync(_ raw: String) throws -> Any {
         guard let call = try jsonObject(raw) as? [String: Any] else { throw AppFailure("原生调用格式错误") }
         let method = string(call["method"]), p = call["params"] as? [String: Any] ?? [:]
         let key = storagePrefix + string(p["key"])
         switch method {
-        case "runtime.capabilities": return ["compute": false]
+        case "runtime.capabilities": return ["compute": true, "binary": true, "memoryHls": true, "mediaProcessor": true]
+        case "crypto.rsa": return try NativeCrypto.rsa(p)
+        case "crypto.aes": return try NativeCrypto.aesGCM(p)
+        case "binary.size", "binary.read", "binary.write", "binary.slice", "binary.patch", "binary.concat": return try binaryStore.call(method, p)
         case "url.validate":
             guard let url = URL(string: string(p["url"])), url.host != nil,
                   (url.scheme == "https" || (p["allowHttp"] as? Bool == true && url.scheme == "http")) else { throw AppFailure("无效或不允许的 URL") }
@@ -154,7 +166,7 @@ final class ScriptRuntime {
         case "storage.getItem", "native.store.get": return defaults.string(forKey: key + ".json").flatMap { try? jsonObject($0) } ?? defaults.object(forKey: key) ?? NSNull()
         case "storage.setItem", "native.store.set":
             let value = p["value"] ?? NSNull()
-            if value is NSNull { defaults.removeObject(forKey: key) } else {
+            if value is NSNull { defaults.removeObject(forKey: key); defaults.removeObject(forKey: key + ".json") } else {
                 // Persist JSON text to support nested nulls without violating property-list constraints.
                 defaults.set(try jsonText(value), forKey: key + ".json")
                 defaults.removeObject(forKey: key)
@@ -170,7 +182,7 @@ final class ScriptRuntime {
             let prefix = "cache.\(string(p["namespace"]))."
             return defaults.dictionaryRepresentation().keys.filter { $0.hasPrefix(prefix) }.map { String($0.dropFirst(prefix.count)) }
         case "storage.readJSON": return defaults.string(forKey: key + ".json").flatMap { try? jsonObject($0) } ?? defaults.object(forKey: key) ?? NSNull()
-        case "native.cancelled": return false
+        case "native.cancelled": return closed
         case "native.cache.generation": return 1
         case "native.cache.seconds": return p["seconds"] ?? 0
         case "i18n": return p["value"] ?? ""
@@ -190,12 +202,14 @@ final class ScriptRuntime {
     private func startRequest(id: String, raw: String) {
         requests[id] = Task { [weak self] in
             guard let self else { return }
-            let result: [String: Any]
+            let result: Any
             do {
                 guard let call = try jsonObject(raw) as? [String: Any] else { throw AppFailure("请求格式无效") }
                 let p = call["params"] as? [String: Any] ?? [:]
                 switch string(call["method"]) {
                 case "request": result = try await Self.request(p, session: self.networkSession)
+                case "compute": result = try await self.computeService.run(p)
+                case "tmdb": result = try await TMDBClient.get(p, defaults: self.defaults, session: self.networkSession)
                 default: throw AppFailure("当前 iOS 版未实现接口：\(string(call["method"]))")
                 }
             } catch { result = ["error": error.localizedDescription] }

@@ -59,20 +59,33 @@ struct PlaySource: Identifiable {
     var url: URL
     var headers: [String: String]
     var downloadable: Bool
+    var manifest: String?
+    var baseURL: URL?
+    var mime: String
+    var processor: [String: Any]?
+    var runtime: ScriptRuntime?
     init(_ raw: [String: Any]) throws {
-        guard raw["manifest"] == nil, raw["processor"] == nil else {
-            throw AppFailure("此线路需要内存 HLS 或媒体处理器，当前 iOS 版暂不支持，请选择其他线路")
+        manifest = raw["manifest"] as? String
+        let address = string(raw["url"] ?? raw["videoUrl"] ?? raw["baseUrl"])
+        guard let parsedURL = URL(string: address), ["http", "https"].contains(parsedURL.scheme?.lowercased() ?? "") else {
+            throw AppFailure("播放线路没有有效的 HTTP 视频地址或内存 HLS 基地址")
         }
-        guard let url = URL(string: string(raw["url"] ?? raw["videoUrl"])), ["http", "https"].contains(url.scheme?.lowercased() ?? "") else {
-            throw AppFailure("播放线路没有有效的 HTTP 视频地址")
+        if let manifest {
+            guard manifest.hasPrefix("#EXTM3U"), manifest.utf8.count <= 2 * 1024 * 1024 else { throw AppFailure("无效或过大的内存 HLS 清单") }
+            baseURL = parsedURL
         }
-        self.url = url
+        url = parsedURL
         name = string(raw["name"]); if name.isEmpty { name = "默认线路" }
-        id = string(raw["sourceId"] ?? raw["id"]); if id.isEmpty { id = url.absoluteString }
+        id = string(raw["sourceId"] ?? raw["id"]); if id.isEmpty { id = address }
         headers = raw["headers"] as? [String: String] ?? [:]
         downloadable = raw["downloadable"] as? Bool ?? true
+        mime = string(raw["mimeType"] ?? raw["mime"])
+        processor = raw["processor"] as? [String: Any]
+        runtime = nil
     }
+    var isHLS: Bool { manifest != nil || url.pathExtension.lowercased() == "m3u8" || mime.lowercased().contains("mpegurl") }
 }
+
 struct SavedItem: Codable, Identifiable {
     var sourceID: String
     var item: ContentItem
