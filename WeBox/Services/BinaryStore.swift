@@ -38,7 +38,7 @@ final class BinaryStore {
         case "binary.write":
             let replacement = try NativeCrypto.decode(string(p["data"]), encoding: "base64")
             guard replacement.count <= 65536, replacement.count <= bytes.count - offset else { throw AppFailure("二进制写入越界或超过 64 KiB") }
-            var result = bytes; result.replaceSubrange(offset..<(offset + replacement.count), with: replacement); values[handle] = result; return handle
+            var result = bytes; result.replaceSubrange(offset..<(offset + replacement.count), with: replacement); return try create(result)
         case "binary.patch":
             guard let patches = p["patches"] as? [[String: Any]] else { throw AppFailure("二进制补丁参数无效") }
             var result = bytes
@@ -48,7 +48,7 @@ final class BinaryStore {
                 guard start <= result.count, replacement.count <= result.count - start else { throw AppFailure("二进制补丁范围越界") }
                 result.replaceSubrange(start..<(start + replacement.count), with: replacement)
             }
-            values[handle] = result; return handle
+            return try create(result)
         default: throw AppFailure("未知二进制接口")
         }
     }

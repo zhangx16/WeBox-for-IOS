@@ -288,17 +288,30 @@ final class LibraryStore: ObservableObject {
     func localURL(_ record: DownloadRecord) -> URL { downloadsDirectory.appendingPathComponent(record.filename) }
     func download(_ source: PlaySource, title: String) {
         guard downloadTask == nil else { error = "已有下载正在进行"; return }
-        guard source.downloadable, ["mp4", "mov", "m4v"].contains(source.url.pathExtension.lowercased()) else { error = "当前支持 MP4/MOV/M4V 直链下载；HLS、直播与媒体处理线路暂不支持"; return }
+        guard source.downloadable else { error = "此线路未开放下载"; return }
         downloadStatus = "正在下载 \(title)…"
         downloadTask = Task {
             defer { downloadTask = nil; downloadStatus = nil }
             do {
-                var request = URLRequest(url: source.url); request.allHTTPHeaderFields = source.headers
+                if source.isHLS {
+                    let name = UUID().uuidString + ".hls"
+                    let destination = downloadsDirectory.appendingPathComponent(name, isDirectory: true)
+                    do {
+                        let downloader = MediaOfflineDownloader { count in self.downloadStatus = "已保存 \(count) 个资源 · \(title)" }
+                        _ = try await downloader.download(source: source, destination: destination)
+                        downloads.insert(DownloadRecord(title: title, filename: name + "/index.m3u8"), at: 0); saveDownloads()
+                    } catch { try? FileManager.default.removeItem(at: destination); throw error }
+                    return
+                }
+                let proxy = MediaProxy(source: source)
+                defer { proxy.close() }
+                let proxied = try await proxy.start()
+                var request = URLRequest(url: proxied)
                 let (file, response) = try await URLSession.shared.download(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw AppFailure("下载失败") }
                 try Task.checkCancellation()
                 try FileManager.default.createDirectory(at: downloadsDirectory, withIntermediateDirectories: true)
-                let name = UUID().uuidString + "." + source.url.pathExtension.lowercased()
+                let name = UUID().uuidString + "." + (source.url.pathExtension.isEmpty ? "mp4" : source.url.pathExtension.lowercased())
                 try FileManager.default.moveItem(at: file, to: downloadsDirectory.appendingPathComponent(name))
                 downloads.insert(DownloadRecord(title: title, filename: name), at: 0); saveDownloads()
             } catch { if !Task.isCancelled { self.error = error.localizedDescription } }
@@ -306,7 +319,7 @@ final class LibraryStore: ObservableObject {
     }
     func cancelDownload() { downloadTask?.cancel() }
     func removeDownload(_ record: DownloadRecord) {
-        do { try FileManager.default.removeItem(at: localURL(record)); downloads.removeAll { $0.id == record.id }; saveDownloads() }
+        do { let target = localURL(record); try FileManager.default.removeItem(at: record.filename.contains(".hls/") ? target.deletingLastPathComponent() : target); downloads.removeAll { $0.id == record.id }; saveDownloads() }
         catch { self.error = error.localizedDescription }
     }
     private func saveDownloads() {
