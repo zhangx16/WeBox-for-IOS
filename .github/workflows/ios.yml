@@ -4,6 +4,9 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -20,8 +23,12 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          mkdir -p build
           SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if "iPhone" in x["name"]))')
-          xcodebuild test -project WeBox.xcodeproj -scheme WeBox -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -resultBundlePath build/TestResults.xcresult CODE_SIGNING_ALLOWED=NO | tee build-test.log
+          xcodebuild test -project WeBox.xcodeproj -scheme WeBox -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -parallel-testing-enabled NO -derivedDataPath build/DerivedData -resultBundlePath build/TestResults.xcresult CODE_SIGNING_ALLOWED=NO | tee build-test.log
+          xcrun simctl launch "$SIMULATOR_ID" com.zhangx16.WeBox
+          sleep 2
+          xcrun simctl io "$SIMULATOR_ID" screenshot build/WeBox-home.png
       - name: Archive for iPhone
         run: |
           set -o pipefail
@@ -37,6 +44,7 @@ jobs:
           path: |
             build/WeBox-unsigned.ipa
             WeBox.xcodeproj
+            build/WeBox-home.png
           retention-days: 30
       - name: Upload test results and build logs
         if: always()
