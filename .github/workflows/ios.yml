@@ -1,0 +1,50 @@
+name: Build iOS
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate Xcode project
+        run: xcodegen generate
+      - name: Build and run integration tests
+        shell: bash
+        run: |
+          set -o pipefail
+          SIMULATOR_ID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for devices in d["devices"].values() for x in devices if "iPhone" in x["name"]))')
+          xcodebuild test -project WeBox.xcodeproj -scheme WeBox -destination "platform=iOS Simulator,id=$SIMULATOR_ID" -resultBundlePath build/TestResults.xcresult CODE_SIGNING_ALLOWED=NO | tee build-test.log
+      - name: Archive for iPhone
+        run: |
+          set -o pipefail
+          xcodebuild archive -project WeBox.xcodeproj -scheme WeBox -destination 'generic/platform=iOS' -archivePath build/WeBox.xcarchive CODE_SIGNING_ALLOWED=NO | tee build-archive.log
+          mkdir -p build/Payload
+          cp -R build/WeBox.xcarchive/Products/Applications/WeBox.app build/Payload/
+          cd build
+          zip -qry WeBox-unsigned.ipa Payload
+      - name: Upload unsigned IPA and Xcode project
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeBox-iOS-unsigned
+          path: |
+            build/WeBox-unsigned.ipa
+            WeBox.xcodeproj
+          retention-days: 30
+      - name: Upload test results and build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeBox-build-diagnostics
+          path: |
+            build/TestResults.xcresult
+            build-test.log
+            build-archive.log
+          retention-days: 14
