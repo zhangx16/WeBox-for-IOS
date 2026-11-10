@@ -4,7 +4,7 @@ import Foundation
 final class BinaryStore {
     private var values: [String: Data] = [:]
     private let limit = 64 * 1024 * 1024
-    var byteCount: Int { values.values.reduce(0) { $0 + $1.count } }
+    var byteCount: Int { var total = 0; for value in values.values { total += value.count }; return total }
     func create(_ bytes: Data) throws -> String {
         guard bytes.count <= limit - byteCount else { throw AppFailure("二进制缓冲超过 64 MB 会话额度") }
         let id = "wb:" + UUID().uuidString; values[id] = bytes; return id

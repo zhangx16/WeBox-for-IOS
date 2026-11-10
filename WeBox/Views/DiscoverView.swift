@@ -191,42 +191,40 @@ struct GlobalSearchView: View {
     @State private var task: Task<Void, Never>?
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(library.sources) { source in
-                                Button { if selectedSources.contains(source.id) { selectedSources.remove(source.id) } else { selectedSources.insert(source.id) } } label: {
-                                    SourceChip(title: source.title, selected: selectedSources.contains(source.id))
-                                }.buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    if model.groups.isEmpty && !model.busy {
-                        ContentUnavailableView("下一部，想看什么？", systemImage: "magnifyingglass", description: Text("选择内容源，输入片名后开始搜索。"))
-                    }
-                    ForEach(model.groups) { group in
-                        VStack(alignment: .leading, spacing: 12) {
-                            SectionHeading(group.source.title) { Text("\(group.items.count) 项").foregroundStyle(.secondary) }
-                            if let error = group.error { Text(error).font(.subheadline).foregroundStyle(.secondary) }
-                            else if group.items.isEmpty { Text("没有找到相关内容").font(.subheadline).foregroundStyle(.secondary) }
-                            else {
-                                ForEach(group.items) { item in
-                                    NavigationLink { DetailView(source: group.source, item: item) } label: { MediaListRow(item: item, subtitle: item.summary) }.buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
-                    if model.busy { HStack { ProgressView(); Text("正在搜索内容源…"); Spacer(); Button("停止") { task?.cancel(); model.cancel() } }.font(.subheadline) }
-                }.padding(WeBoxTheme.gutter)
-            }.background(WeBoxTheme.background)
-            .navigationTitle("搜索").navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $query, prompt: "电影、剧集或关键词")
-            .onSubmit(of: .search, perform: submit)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } } }
-            .onAppear { selectedSources = Set(library.sources.map(\.id)) }
-            .onDisappear { task?.cancel(); model.cancel() }
+            content
+                .navigationTitle("搜索").navigationBarTitleDisplayMode(.inline)
+                .searchable(text: $query, prompt: "电影、剧集或关键词")
+                .onSubmit(of: .search, perform: submit)
+                .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } } }
+                .onAppear { selectedSources = Set(library.sources.map(\.id)) }
+                .onDisappear { task?.cancel(); model.cancel() }
         }
+    }
+    private var content: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                sourceChoices
+                if model.groups.isEmpty && !model.busy {
+                    ContentUnavailableView("下一部，想看什么？", systemImage: "magnifyingglass", description: Text("选择内容源，输入片名后开始搜索。"))
+                }
+                ForEach(model.groups) { group in GlobalSearchResultSection(group: group) }
+                if model.busy {
+                    HStack { ProgressView(); Text("正在搜索内容源…"); Spacer(); Button("停止") { task?.cancel(); model.cancel() } }.font(.subheadline)
+                }
+            }.padding(WeBoxTheme.gutter)
+        }.background(WeBoxTheme.background)
+    }
+    private var sourceChoices: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(library.sources) { source in
+                    Button { toggleSource(source.id) } label: { SourceChip(title: source.title, selected: selectedSources.contains(source.id)) }.buttonStyle(.plain)
+                }
+            }
+        }
+    }
+    private func toggleSource(_ id: String) {
+        if selectedSources.contains(id) { selectedSources.remove(id) } else { selectedSources.insert(id) }
     }
     private func submit() {
         let word = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -234,5 +232,21 @@ struct GlobalSearchView: View {
         task?.cancel()
         let sources = library.sources.filter { selectedSources.contains($0.id) }
         task = Task { await model.search(word, sources: sources) }
+    }
+}
+
+private struct GlobalSearchResultSection: View {
+    let group: GlobalSearchGroup
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            SectionHeading(group.source.title) { Text("\(group.items.count) 项").foregroundStyle(.secondary) }
+            if let error = group.error { Text(error).font(.subheadline).foregroundStyle(.secondary) }
+            else if group.items.isEmpty { Text("没有找到相关内容").font(.subheadline).foregroundStyle(.secondary) }
+            else {
+                ForEach(group.items) { item in
+                    NavigationLink { DetailView(source: group.source, item: item) } label: { MediaListRow(item: item, subtitle: item.summary) }.buttonStyle(.plain)
+                }
+            }
+        }
     }
 }
