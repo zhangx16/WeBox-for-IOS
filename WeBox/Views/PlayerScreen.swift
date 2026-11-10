@@ -17,14 +17,14 @@ final class PlayerModel: ObservableObject {
     private var loadTask: Task<Void, Never>?
     init(selection: PlaybackSelection, position: Double, record: @escaping @MainActor (Double) -> Void) {
         player = AVPlayer()
-        loadTask = Task { [weak self] in
+        loadTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let proxy = MediaProxy(source: selection.source); self.proxy = proxy
                 let address = try await proxy.start()
                 let item = AVPlayerItem(url: address)
                 self.player.replaceCurrentItem(with: item)
-                if position > 0 && !selection.item.isLive { self.player.seek(to: CMTime(seconds: position, preferredTimescale: 600)) }
+                if position > 0 && !selection.item.isLive { await self.player.seek(to: CMTime(seconds: position, preferredTimescale: 600)) }
                 self.player.play()
                 self.observer = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor [weak self] in

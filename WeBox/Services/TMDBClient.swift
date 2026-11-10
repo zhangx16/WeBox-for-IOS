@@ -10,7 +10,9 @@ enum TMDBClient {
               !api.components(separatedBy: "/").contains("..") else { throw AppFailure("TMDB 路径无效") }
         let base = defaults.string(forKey: "webox.tmdb.service") ?? "https://api.themoviedb.org/3"
         guard var components = URLComponents(string: base), components.scheme == "https", components.host != nil, components.user == nil, components.password == nil else { throw AppFailure("TMDB 服务需要有效的 HTTPS 地址") }
-        components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).isEmpty ? "/3/" + api : components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")).split(separator: "/").map(String.init).reduce("", { $0 + "/" + $1 }) + "/" + api
+        let trimmedPath = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let basePath = trimmedPath.isEmpty ? "3" : trimmedPath
+        components.path = "/" + basePath + "/" + api
         var params = request["params"] as? [String: Any] ?? [:]
         params["language"] = params["language"] ?? defaults.string(forKey: "webox.tmdb.language") ?? "zh-CN"
         let key = defaults.string(forKey: "webox.tmdb.apiKey")?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
