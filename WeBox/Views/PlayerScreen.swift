@@ -13,7 +13,7 @@ final class PlayerModel: ObservableObject {
     private var observer: NSKeyValueObservation?
     private var progressObserver: Any?
     private var lastSave = Date.distantPast
-    init(selection: PlaybackSelection, position: Double, record: @escaping (Double) -> Void) {
+    init(selection: PlaybackSelection, position: Double, record: @escaping @MainActor (Double) -> Void) {
         let asset = AVURLAsset(url: selection.source.url, options: ["AVURLAssetHTTPHeaderFieldsKey": selection.source.headers])
         let item = AVPlayerItem(asset: asset)
         player = AVPlayer(playerItem: item)
@@ -23,8 +23,10 @@ final class PlayerModel: ObservableObject {
             }
         }
         progressObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 5, preferredTimescale: 600), queue: .main) { [weak self] time in
-            guard let self, time.seconds.isFinite, Date().timeIntervalSince(self.lastSave) > 10 else { return }
-            self.lastSave = Date(); record(time.seconds)
+            Task { @MainActor [weak self] in
+                guard let self, time.seconds.isFinite, Date().timeIntervalSince(self.lastSave) > 10 else { return }
+                self.lastSave = Date(); record(time.seconds)
+            }
         }
         if position > 0 && !selection.item.isLive { player.seek(to: CMTime(seconds: position, preferredTimescale: 600)) }
     }

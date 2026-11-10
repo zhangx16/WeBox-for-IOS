@@ -26,7 +26,10 @@ struct SourcesView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("你的内容，由你连接。").font(.title2.bold())
+                    HStack(spacing: 14) {
+                        Image("WeBoxIcon").resizable().frame(width: 52, height: 52).clipShape(RoundedRectangle(cornerRadius: 12))
+                        Text("你的内容，由你连接。").font(.title2.bold())
+                    }
                     Text("添加 JavaScript 内容源，浏览片单与播放视频。").font(.subheadline).foregroundStyle(.secondary)
                 }.padding(.vertical, 18).listRowBackground(Color.mint.opacity(0.08))
             }

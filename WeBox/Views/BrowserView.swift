@@ -39,6 +39,9 @@ struct BrowserView: View {
         .navigationTitle(model.source.title).navigationBarTitleDisplayMode(.inline)
         .searchable(text: $model.query, prompt: model.searchable ? "搜索当前内容源" : "此源暂不支持搜索")
         .onSubmit(of: .search) { Task { await model.load(reset: true) } }
+        .onChange(of: model.query) { old, value in
+            if !old.isEmpty && value.isEmpty { Task { await model.load(reset: true) } }
+        }
         .refreshable { await model.load(reset: true) }
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {

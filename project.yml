@@ -29,6 +29,12 @@ targets:
       path: WeBox/Info.plist
       properties:
         CFBundleDisplayName: WeBox
+        CFBundleIcons:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles: [WeBoxIcon]
+        CFBundleIcons~ipad:
+          CFBundlePrimaryIcon:
+            CFBundleIconFiles: [WeBoxIcon]
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

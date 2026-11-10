@@ -67,8 +67,11 @@ final class ScriptRuntime {
         for name in ["cheerio", "widget", "webox", "xptv", "ios-compat"] { try evaluate(Self.resource(name, "js")) }
         // Source text stays intact: no eval-based transformations of user functions.
         try evaluate(source.code)
-        try evaluate("if(typeof WidgetMetadata==='undefined' && typeof getConfig==='function'){__weboxXptvAttach('compat.'+" + (try jsonText(source.id)) + ",function(){return typeof app==='object'?app:{};});}")
-        let nativeSettings = Dictionary(uniqueKeysWithValues: source.settings.map { ( $0.key.hasPrefix("__wbSetting_") ? String($0.key.dropFirst(12)) : $0.key, $0.value) })
+        let compatID = source.id.hasPrefix("compat.") ? source.id : "compat." + source.id
+        try evaluate("if(typeof WidgetMetadata==='undefined' && typeof getConfig==='function'){__weboxXptvAttach(" + (try jsonText(compatID)) + ",function(){return typeof app==='object'?app:{};});}")
+        let nativeSettings = source.settings.reduce(into: [String: String]()) { result, entry in
+            result[entry.key.hasPrefix("__wbSetting_") ? String(entry.key.dropFirst(12)) : entry.key] = entry.value
+        }
         try evaluate("if(typeof __wbHasSource==='function'&&__wbHasSource())__wbSetSettings(" + (try jsonText(try jsonText(nativeSettings))) + ");")
         guard let raw = context.evaluateScript("__weboxMetadata()")?.toString(), let metadata = try jsonObject(raw) as? [String: Any], !string(metadata["id"]).isEmpty else {
             throw AppFailure(lastException ?? "内容源缺少有效的元数据")

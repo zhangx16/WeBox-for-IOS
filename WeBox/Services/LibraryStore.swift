@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import SwiftUI
 
 @MainActor
@@ -34,7 +35,9 @@ final class LibraryStore: ObservableObject {
     func install(code: String, origin: String) throws {
         guard code.utf8.count <= 4 * 1024 * 1024 else { throw AppFailure("脚本超过 4 MB") }
         if code.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("REXENC") { throw AppFailure("当前版暂不支持 REXENC 加密源，请导入明文 JS 内容源") }
-        let temporary = ScriptSource(id: UUID().uuidString, title: "", version: "", code: code, origin: origin)
+        let identityInput = origin == "pasted" ? code : origin
+        let identity = "script." + SHA256.hash(data: Data(identityInput.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
+        let temporary = ScriptSource(id: identity, title: "", version: "", code: code, origin: origin)
         let runtime = try ScriptRuntime(source: temporary)
         defer { runtime.close() }
         let id = string(runtime.metadata["id"])

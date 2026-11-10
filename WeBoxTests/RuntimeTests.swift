@@ -136,7 +136,16 @@ final class FixtureURLProtocol: URLProtocol, @unchecked Sendable {
     override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "fixture.webox.test" }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        let payload: [String: Any] = ["query": request.url?.query ?? "", "header": request.value(forHTTPHeaderField: "X-WeBox") ?? "", "method": request.httpMethod ?? "", "body": request.httpBody.flatMap { String(data: $0, encoding: .utf8) } ?? ""]
+        var body = request.httpBody ?? Data()
+        if body.isEmpty, let stream = request.httpBodyStream {
+            stream.open(); defer { stream.close() }
+            var bytes = [UInt8](repeating: 0, count: 1024)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&bytes, maxLength: bytes.count)
+                if count <= 0 { break }; body.append(contentsOf: bytes.prefix(count))
+            }
+        }
+        let payload: [String: Any] = ["query": request.url?.query ?? "", "header": request.value(forHTTPHeaderField: "X-WeBox") ?? "", "method": request.httpMethod ?? "", "body": String(data: body, encoding: .utf8) ?? ""]
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json", "X-Fixture": "yes"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: payload))
@@ -164,7 +173,8 @@ extension RuntimeTests {
         XCTAssertEqual(string(body["header"]), "bridge")
         XCTAssertEqual(string(body["method"]), "POST")
         XCTAssertTrue(string(body["query"]).contains("q=hello%20world"))
-        XCTAssertTrue(string(body["body"]).contains("中文"))
+        let sent = try jsonObject(string(body["body"])) as? [String: Any]
+        XCTAssertEqual(string(sent?["title"]), "中文")
     }
 
     @MainActor
@@ -178,5 +188,34 @@ extension RuntimeTests {
         defer { runtime.close() }
         let result = try await runtime.invoke("vector", arguments: [])
         XCTAssertEqual(string(result), "69c4e0d86a7b0430d8cdb78070b4c55a")
+    }
+}
+
+extension RuntimeTests {
+    @MainActor
+    func testXPTVReinstallKeepsIdentity() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = LibraryStore(directory: directory)
+        let code = "async function getConfig(){return {title:'Stable',tabs:[{name:'All',ext:{id:'all'}}]};}"
+        try store.install(code: code, origin: "https://example.com/stable.js")
+        let first = try XCTUnwrap(store.sources.last)
+        try store.install(code: code, origin: "https://example.com/stable.js")
+        XCTAssertEqual(store.sources.count, 2)
+        XCTAssertEqual(store.sources.last?.id, first.id)
+        let runtime = try ScriptRuntime(source: first)
+        defer { runtime.close() }
+        XCTAssertEqual(string(runtime.metadata["id"]), first.id)
+    }
+
+    @MainActor
+    func testCloseCancelsPendingInvocation() async throws {
+        let code = "WidgetMetadata={id:'test.cancel',title:'Cancel',modules:[]}; async function hanging(){await new Promise(()=>{});}"
+        let runtime = try ScriptRuntime(source: ScriptSource(id: "test.cancel", title: "", version: "", code: code, origin: "test"))
+        let task = Task { try await runtime.invoke("hanging", arguments: []) }
+        try await Task.sleep(for: .milliseconds(10))
+        runtime.close()
+        do { _ = try await task.value; XCTFail("Expected close to cancel pending invocation") }
+        catch { XCTAssertTrue(error is CancellationError) }
     }
 }
