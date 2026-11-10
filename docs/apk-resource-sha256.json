@@ -1,0 +1,9 @@
+{
+  "modules/demo.js": "17e246ef3fd088b989c19c09f8a2cf388d2200057ebceedf377f529140aeb1ab",
+  "runtime/cheerio.js": "888c17a5164c502eba700526236c986a427aa3beb1403d943187a3990b20f39c",
+  "runtime/cryptojs.js": "5f2dcbd9d6d66892259c3e779ae8bf9d4c9ea6104bb91b7631b7f7835eafa2ef",
+  "runtime/web-licenses.txt": "eecfceef81f8a216db0237a86ab5ec2cd512ef62aafba0b8f82f17948c99be68",
+  "runtime/webox.js": "86be2d82665ef5865bad8783961e0ad9d03855f3f3d8578991a9e759e889fb17",
+  "runtime/widget.js": "6abeebbf4b2ba9ecf9708479917ce02e3fe406e21f520015bcaf2762d6350de0",
+  "runtime/xptv.js": "df58ee30f30ddee3d3f92b2ed8f2b7dec278e5c53324375f2ee82c2b217fa08c"
+}
