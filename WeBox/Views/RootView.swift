@@ -299,11 +299,27 @@ struct DownloadsView: View {
 }
 struct LocalPlayerView: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var player: AVPlayer
+    @State private var player = AVPlayer()
+    @State private var proxy: MediaProxy?
+    @State private var error: String?
+    let url: URL
     let title: String
-    init(url: URL, title: String) { self.title = title; _player = State(initialValue: AVPlayer(url: url)) }
     var body: some View {
-        NavigationStack { VideoPlayer(player: player).navigationTitle(title).navigationBarTitleDisplayMode(.inline).toolbar { Button("完成") { dismiss() } } }
-            .onAppear { player.play() }.onDisappear { player.pause() }
+        NavigationStack {
+            VStack {
+                VideoPlayer(player: player)
+                if let error { Text(error).foregroundStyle(.orange).padding() }
+            }.navigationTitle(title).navigationBarTitleDisplayMode(.inline).toolbar { Button("完成") { dismiss() } }
+        }
+        .task {
+            do {
+                let address: URL
+                if url.pathExtension.lowercased() == "m3u8" { let server = try MediaProxy(localPlaylist: url); proxy = server; address = try await server.start() }
+                else { address = url }
+                try Task.checkCancellation()
+                player.replaceCurrentItem(with: AVPlayerItem(url: address)); player.play()
+            } catch { self.error = error.localizedDescription }
+        }
+        .onDisappear { player.pause(); proxy?.close(); proxy = nil }
     }
 }

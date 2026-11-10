@@ -8,6 +8,7 @@ import Network
 final class MediaProxy {
     let source: PlaySource
     private let session: URLSession
+    private var localDirectory: URL?
     private let token = UUID().uuidString
     private let queue = DispatchQueue(label: "dev.webox.media.http")
     private var listener: NWListener?
@@ -17,6 +18,12 @@ final class MediaProxy {
     private var stopped = false
 
     init(source: PlaySource, session: URLSession = .shared) { self.source = source; self.session = session }
+
+    init(localPlaylist: URL) throws {
+        self.source = try PlaySource(["url": "https://offline.webox.local/" + localPlaylist.lastPathComponent])
+        self.session = .shared
+        self.localDirectory = localPlaylist.deletingLastPathComponent()
+    }
 
     func start() async throws -> URL {
         if let origin { return localURL(for: source.url, origin: origin, root: true) }
@@ -110,6 +117,25 @@ final class MediaProxy {
             remote = address
         }
         let head = parts[0] == "HEAD"
+        if let localDirectory {
+            guard remote.host == "offline.webox.local", !remote.lastPathComponent.isEmpty else { throw AppFailure("离线媒体地址无效") }
+            let file = localDirectory.appendingPathComponent(remote.lastPathComponent)
+            guard file.standardizedFileURL.deletingLastPathComponent() == localDirectory.standardizedFileURL else { throw AppFailure("离线媒体路径越界") }
+            var data = try Data(contentsOf: file)
+            if remote.pathExtension.lowercased() == "m3u8" {
+                let rewritten = try MediaPlaylist.rewriteResources(String(decoding: data, as: UTF8.self), base: remote) { url, kind, range in self.localURL(for: url, origin: origin, kind: kind, byteRange: range).absoluteString }
+                data = Data(rewritten.utf8)
+            }
+            var headers = ["Content-Type": MediaPlaylist.mime(for: remote), "Accept-Ranges": "bytes"]
+            if let value = incoming["range"] {
+                do {
+                    let range = try MediaByteRange.parse(value, size: data.count)
+                    headers["Content-Range"] = "bytes \(range.lowerBound)-\(range.upperBound - 1)/\(data.count)"
+                    try await send(connection, status: 206, headers: headers, body: data.subdata(in: range), head: head)
+                } catch { try await send(connection, status: 416, headers: ["Content-Range": "bytes */\(data.count)"], body: Data(), head: head) }
+            } else { try await send(connection, status: 200, headers: headers, body: data, head: head) }
+            return
+        }
         if path[1] == "root", let manifest = source.manifest {
             let rewritten = try MediaPlaylist.rewriteResources(manifest, base: source.baseURL ?? remote) { url, kind, range in self.localURL(for: url, origin: origin, kind: kind, byteRange: range).absoluteString }
             try await send(connection, status: 200, headers: ["Content-Type": "application/vnd.apple.mpegurl", "Cache-Control": "no-store"], body: Data(rewritten.utf8), head: head)

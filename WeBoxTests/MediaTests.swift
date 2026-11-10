@@ -53,3 +53,21 @@ final class MediaFixtureProtocol: URLProtocol, @unchecked Sendable {
     }
     override func stopLoading() {}
 }
+extension MediaTests {
+    @MainActor
+    func testOfflinePlaylistServesLocalFilesThroughLoopback() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let manifest = directory.appendingPathComponent("index.m3u8")
+        try Data("#EXTM3U\n#EXTINF:2,\npart.ts\n#EXT-X-ENDLIST".utf8).write(to: manifest)
+        try Data([10,20,30]).write(to: directory.appendingPathComponent("part.ts"))
+        let proxy = try MediaProxy(localPlaylist: manifest); defer { proxy.close() }
+        let url = try await proxy.start()
+        let (bytes, _) = try await URLSession.shared.data(from: url)
+        let text = String(decoding: bytes, as: UTF8.self)
+        let segment = try XCTUnwrap(text.components(separatedBy: .newlines).first { $0.hasPrefix("http://127") }.flatMap(URL.init(string:)))
+        let (data, _) = try await URLSession.shared.data(from: segment)
+        XCTAssertEqual(data, Data([10,20,30]))
+    }
+}
