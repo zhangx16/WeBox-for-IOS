@@ -115,6 +115,9 @@ final class DetailModel: ObservableObject {
         guard !busy, let runtime else { return }
         busy = true; error = nil; selectedEpisode = episode
         do {
+            if episode.link.hasPrefix("webox:content:") && episode.children.isEmpty {
+                throw AppFailure("此影片当前没有可播放选集，请选择其他影片或稍后重试")
+            }
             let modules = runtime.metadata["modules"] as? [[String: Any]] ?? []
             let hasResolver = string(runtime.metadata["hostProtocol"]) == "webox" || modules.contains { string($0["type"]) == "stream" }
             if !episode.videoURL.isEmpty && !hasResolver { streams = [try PlaySource(["url": episode.videoURL, "name": "直接播放"])] }

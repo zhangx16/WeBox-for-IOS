@@ -10,6 +10,8 @@ final class InterfaceTests: XCTestCase {
         let library = LibraryStore(directory: directory)
         let controller = UIHostingController(rootView: RootView().environmentObject(library))
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first { window.windowScene = scene }
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.rootViewController = controller; window.makeKeyAndVisible()
         defer { window.isHidden = true }
         try await Task.sleep(for: .milliseconds(700))

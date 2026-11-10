@@ -1,4 +1,5 @@
 import XCTest
+import Libmpv
 @testable import WeBox
 
 final class MediaTests: XCTestCase {
@@ -69,5 +70,16 @@ extension MediaTests {
         let segment = try XCTUnwrap(text.components(separatedBy: .newlines).first { $0.hasPrefix("http://127") }.flatMap(URL.init(string:)))
         let (data, _) = try await URLSession.shared.data(from: segment)
         XCTAssertEqual(data, Data([10,20,30]))
+    }
+}
+
+extension MediaTests {
+    func testLinkedMPVCoreInitializes() throws {
+        let handle = try XCTUnwrap(mpv_create())
+        defer { mpv_terminate_destroy(handle) }
+        XCTAssertGreaterThan(mpv_client_api_version(), 0)
+        XCTAssertGreaterThanOrEqual(mpv_set_option_string(handle, "vo", "null"), 0)
+        XCTAssertGreaterThanOrEqual(mpv_set_option_string(handle, "ao", "null"), 0)
+        XCTAssertGreaterThanOrEqual(mpv_initialize(handle), 0)
     }
 }

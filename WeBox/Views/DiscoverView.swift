@@ -194,7 +194,7 @@ struct GlobalSearchView: View {
             content
                 .navigationTitle("搜索").navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $query, prompt: "电影、剧集或关键词")
-                .onSubmit(of: .search, perform: submit)
+                .onSubmit(of: .search) { submit() }
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } } }
                 .onAppear { selectedSources = Set(library.sources.map(\.id)) }
                 .onDisappear { task?.cancel(); model.cancel() }
