@@ -131,3 +131,52 @@ final class RuntimeTests: XCTestCase {
         XCTAssertEqual(reloaded.history.count, 1)
     }
 }
+
+final class FixtureURLProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host == "fixture.webox.test" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let payload: [String: Any] = ["query": request.url?.query ?? "", "header": request.value(forHTTPHeaderField: "X-WeBox") ?? "", "method": request.httpMethod ?? "", "body": request.httpBody.flatMap { String(data: $0, encoding: .utf8) } ?? ""]
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json", "X-Fixture": "yes"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: payload))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+    override func stopLoading() {}
+}
+extension RuntimeTests {
+    @MainActor
+    func testNativeAsyncHTTPBridge() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FixtureURLProtocol.self]
+        let session = URLSession(configuration: config)
+        defer { session.invalidateAndCancel() }
+        let code = """
+        WidgetMetadata={id:'test.http',title:'HTTP',version:'1',modules:[]};
+        async function send(){return await Widget.http.post('https://fixture.webox.test/echo',{title:'中文'},
+          {headers:{'X-WeBox':'bridge'},params:{q:'hello world'}});}
+        """
+        let runtime = try ScriptRuntime(source: ScriptSource(id: "test.http", title: "", version: "", code: code, origin: "test"), networkSession: session)
+        defer { runtime.close() }
+        let response = try await runtime.invoke("send", arguments: []) as! [String: Any]
+        XCTAssertEqual(response["statusCode"] as? Int, 200)
+        let body = response["data"] as! [String: Any]
+        XCTAssertEqual(string(body["header"]), "bridge")
+        XCTAssertEqual(string(body["method"]), "POST")
+        XCTAssertTrue(string(body["query"]).contains("q=hello%20world"))
+        XCTAssertTrue(string(body["body"]).contains("中文"))
+    }
+
+    @MainActor
+    func testAESKnownVector() async throws {
+        let code = """
+        WidgetMetadata={id:'test.aes',title:'AES',version:'1',modules:[]};
+        async function vector(){return Widget.crypto.aesEncrypt('00112233445566778899aabbccddeeff','000102030405060708090a0b0c0d0e0f','',
+          {mode:'ECB',padding:'NoPadding',keyEncoding:'hex',inputEncoding:'hex',outputEncoding:'hex'});}
+        """
+        let runtime = try ScriptRuntime(source: ScriptSource(id: "test.aes", title: "", version: "", code: code, origin: "test"))
+        defer { runtime.close() }
+        let result = try await runtime.invoke("vector", arguments: [])
+        XCTAssertEqual(string(result), "69c4e0d86a7b0430d8cdb78070b4c55a")
+    }
+}

@@ -14,12 +14,14 @@ final class ScriptRuntime {
     private(set) var metadata: [String: Any] = [:]
     private(set) var logs: [String] = []
     private let defaults: UserDefaults
+    private let networkSession: URLSession
     private let storagePrefix: String
     private var lastException: String?
 
-    init(source: ScriptSource, defaults: UserDefaults = .standard) throws {
+    init(source: ScriptSource, defaults: UserDefaults = .standard, networkSession: URLSession = .shared) throws {
         self.source = source
         self.defaults = defaults
+        self.networkSession = networkSession
         storagePrefix = "script.\(source.id)."
         guard let context = JSContext() else { throw AppFailure("JavaScriptCore 初始化失败") }
         self.context = context
@@ -115,7 +117,7 @@ final class ScriptRuntime {
         } onCancel: {
             Task { @MainActor [weak self] in self?.failInvocation(id, message: "操作已取消") }
         }
-        return try jsonObject(result)
+        return (try? jsonObject(result)) ?? result
     }
     private func failInvocation(_ id: String, message: String) {
         deadlines.removeValue(forKey: id)?.cancel()
@@ -190,7 +192,7 @@ final class ScriptRuntime {
                 guard let call = try jsonObject(raw) as? [String: Any] else { throw AppFailure("请求格式无效") }
                 let p = call["params"] as? [String: Any] ?? [:]
                 switch string(call["method"]) {
-                case "request": result = try await Self.request(p)
+                case "request": result = try await Self.request(p, session: self.networkSession)
                 default: throw AppFailure("当前 iOS 版未实现接口：\(string(call["method"]))")
                 }
             } catch { result = ["error": error.localizedDescription] }
@@ -199,7 +201,7 @@ final class ScriptRuntime {
             self.requests.removeValue(forKey: id)
         }
     }
-    static func request(_ p: [String: Any]) async throws -> [String: Any] {
+    static func request(_ p: [String: Any], session: URLSession = .shared) async throws -> [String: Any] {
         guard var components = URLComponents(string: string(p["url"])), ["https", "http"].contains(components.scheme?.lowercased() ?? "") else { throw AppFailure("仅支持 HTTP(S) 请求") }
         if p["httpsOnly"] as? Bool == true && components.scheme != "https" { throw AppFailure("此内容源禁止 HTTP 请求") }
         if let query = p["params"] as? [String: Any], !query.isEmpty {
@@ -221,7 +223,7 @@ final class ScriptRuntime {
             }
         }
         let delegate = RequestRedirectPolicy(allow: p["allow_redirects"] as? Bool ?? true, httpsOnly: p["httpsOnly"] as? Bool ?? false)
-        let (data, response) = try await URLSession.shared.data(for: request, delegate: delegate)
+        let (data, response) = try await session.data(for: request, delegate: delegate)
         guard let http = response as? HTTPURLResponse else { throw AppFailure("服务器没有返回 HTTP 响应") }
         guard data.count <= 16 * 1024 * 1024 else { throw AppFailure("脚本响应超过 16 MB，请使用媒体播放接口") }
         var body: Any = p["base64Data"] as? Bool == true ? data.base64EncodedString() : String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""

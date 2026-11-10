@@ -29,7 +29,7 @@ xcodegen generate
 open WeBox.xcodeproj
 ```
 
-选择 WeBox scheme，在 Signing & Capabilities 中设置自己的 Team 和唯一 Bundle Identifier，然后运行。模拟器不需要开发者证书。测试目标 `WeBoxTests` 覆盖内置示例、WeBox 原生协议、XPTV、存储、HTML、加密、超时错误传播及备份。
+选择 WeBox scheme，在 Signing & Capabilities 中设置自己的 Team 和唯一 Bundle Identifier，然后运行。模拟器不需要开发者证书。测试目标 `WeBoxTests` 覆盖内置示例、WeBox 原生协议、XPTV、存储、HTML、加密、异常传播及备份。
 
 CI 在 macOS 上生成工程，先运行 iOS 模拟器测试，再 archive iPhone App 并打包未签名 IPA。Linux 不能运行 Xcode；编译结果以 CI 为准。
 

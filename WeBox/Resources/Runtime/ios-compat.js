@@ -43,10 +43,14 @@ __nativeSync = function(raw) {
     if(!fn)throw new Error('不支持的 HMAC 算法');
     result=fn(enc(p.inputEncoding).parse(p.text),enc(p.keyEncoding).parse(p.key)).toString(enc(p.outputEncoding||'hex'));
   } else if(method==='crypto.aes') {
-    var mode=String(p.mode||'CBC').toUpperCase(), padding=String(p.padding||'PKCS7').toUpperCase();
+    var mode=String(p.mode||'CBC').toUpperCase(), padding=String(p.padding||(String(p.mode).toUpperCase()==='CTR'?'NOPADDING':'PKCS7')).toUpperCase();
+    if(padding==='PKCS5PADDING'||padding==='PKCS7PADDING')padding='PKCS7';
     if(!['CBC','ECB','CTR'].includes(mode)||!['PKCS7','NOPADDING','ZEROPADDING'].includes(padding))throw new Error('不支持的 AES 模式或填充');
     var options={iv:enc(p.ivEncoding||'utf8').parse(p.iv),mode:CryptoJS.mode[mode],padding:CryptoJS.pad[({PKCS7:'Pkcs7',NOPADDING:'NoPadding',ZEROPADDING:'ZeroPadding'})[padding]]};
     var key=enc(p.keyEncoding||'utf8').parse(p.key);
+    if(![16,24,32].includes(key.sigBytes))throw new Error('AES 密钥长度必须为 16、24 或 32 字节');
+    if(mode!=='ECB'&&options.iv.sigBytes!==16)throw new Error('AES IV 长度必须为 16 字节');
+    if(mode==='CTR'&&padding!=='NOPADDING')throw new Error('CTR 模式需要 NoPadding');
     if(p.decrypt)result=CryptoJS.AES.decrypt({ciphertext:enc(p.inputEncoding||'base64').parse(p.text)},key,options).toString(enc(p.outputEncoding||'utf8'));
     else result=CryptoJS.AES.encrypt(enc(p.inputEncoding||'utf8').parse(p.text),key,options).ciphertext.toString(enc(p.outputEncoding||'base64'));
   } else return __transportSyncIOS(raw);
