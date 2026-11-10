@@ -170,6 +170,7 @@ struct SettingsView: View {
     @AppStorage("webox.tmdb.service") private var tmdbService = "https://api.themoviedb.org/3"
     @AppStorage("webox.tmdb.apiKey") private var tmdbKey = ""
     @AppStorage("webox.tmdb.language") private var tmdbLanguage = "zh-CN"
+    @AppStorage("webox.player.engine") private var defaultEngine = "native"
     var body: some View {
         Form {
             Section {
@@ -194,6 +195,7 @@ struct SettingsView: View {
                 TextField("语言", text: $tmdbLanguage).textInputAutocapitalization(.never).autocorrectionDisabled()
             } header: { Text("TMDB 元数据") } footer: { Text("需要元数据服务的内容源可使用你的 API 凭证。未填写时不会自动请求该服务。") }
             Section("播放") {
+                Picker("默认播放器", selection: $defaultEngine) { Text("iOS 原生").tag("native"); Text("mpv 多格式").tag("mpv") }
                 LabeledContent("原生播放", value: "AirPlay · 画中画")
                 Text("播放页面可切换线路、调整倍速与画面比例。不同服务器和视频编码的可用功能可能不同。").font(.footnote).foregroundStyle(.secondary)
             }

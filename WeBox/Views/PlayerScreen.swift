@@ -58,11 +58,13 @@ struct PlayerScreen: View {
     @State private var engine = UserDefaults.standard.string(forKey: "webox.player.engine") ?? "native"
     @State private var speed = 1.0
     @State private var locked = false
+    @State private var filling = false
+    @State private var mpvLoad: Task<Void, Never>?
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.black.ignoresSafeArea()
             if engine == "mpv", let mpv { MPVPlayerSurface(controller: mpv).ignoresSafeArea() }
-            else if let model { NativePlayer(player: model.player).ignoresSafeArea() }
+            else if let model { NativePlayer(player: model.player, fill: filling).ignoresSafeArea() }
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Button { dismiss() } label: { Image(systemName: "xmark.circle.fill").font(.title).symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.6)) }
@@ -71,6 +73,7 @@ struct PlayerScreen: View {
                     Menu {
                         Button("iOS 原生播放器") { engine = "native"; startPlayback() }
                         Button("mpv · 多格式") { engine = "mpv"; startPlayback() }
+                        Button(filling ? "适应画面" : "填充画面") { filling.toggle(); mpv?.aspect(filling ? "fill" : "fit") }
                         ForEach([0.5, 1.0, 1.25, 1.5, 2.0], id: \.self) { value in Button("\(value, specifier: "%.2g")×") { speed = value; model?.player.rate = Float(value); mpv?.speed(value) } }
                     } label: { Image(systemName: "slider.horizontal.3").frame(width: 44, height: 44) }
                 }
@@ -89,6 +92,7 @@ struct PlayerScreen: View {
     }
     private func stopPlayback() {
         if let model { library.record(selection.item, sourceID: sourceID, position: model.player.currentTime().seconds); model.stop() }
+        mpvLoad?.cancel(); mpvLoad = nil
         model = nil; mpv?.stop(); mpv = nil; mpvProxy?.close(); mpvProxy = nil
     }
     private func startPlayback() {
@@ -97,10 +101,11 @@ struct PlayerScreen: View {
         if engine == "mpv" {
             let controller = MPVPlaybackController { position in library.record(item, sourceID: sourceID, position: position) }
             mpv = controller
-            Task {
+            mpvLoad = Task {
                 do {
                     let proxy = MediaProxy(source: selection.source); mpvProxy = proxy
                     let url = try await proxy.start()
+                    try Task.checkCancellation()
                     controller.load(url: url, position: library.position(item, sourceID: sourceID))
                 } catch { controller.error = error.localizedDescription }
             }
@@ -111,13 +116,15 @@ struct PlayerScreen: View {
 }
 struct NativePlayer: UIViewControllerRepresentable {
     let player: AVPlayer
+    var fill = false
     func makeUIViewController(context: Context) -> AVPlayerViewController {
         let controller = AVPlayerViewController()
         controller.player = player
+        controller.videoGravity = fill ? .resizeAspectFill : .resizeAspect
         controller.allowsPictureInPicturePlayback = true
         controller.canStartPictureInPictureAutomaticallyFromInline = true
         controller.updatesNowPlayingInfoCenter = true
         return controller
     }
-    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) { controller.player = player }
+    func updateUIViewController(_ controller: AVPlayerViewController, context: Context) { controller.player = player; controller.videoGravity = fill ? .resizeAspectFill : .resizeAspect }
 }

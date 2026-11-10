@@ -115,7 +115,9 @@ final class DetailModel: ObservableObject {
         guard !busy, let runtime else { return }
         busy = true; error = nil; selectedEpisode = episode
         do {
-            if !episode.videoURL.isEmpty { streams = [try PlaySource(["url": episode.videoURL, "name": "直接播放"])] }
+            let modules = runtime.metadata["modules"] as? [[String: Any]] ?? []
+            let hasResolver = string(runtime.metadata["hostProtocol"]) == "webox" || modules.contains { string($0["type"]) == "stream" }
+            if !episode.videoURL.isEmpty && !hasResolver { streams = [try PlaySource(["url": episode.videoURL, "name": "直接播放"])] }
             else {
                 let host = string(runtime.metadata["hostProtocol"])
                 let definitions = runtime.metadata["modules"] as? [[String: Any]] ?? []

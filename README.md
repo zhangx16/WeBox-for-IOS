@@ -2,20 +2,13 @@
 
 基于本机 WeBox Android 0.1.64（versionCode 67）静态分析实现的 iOS 原生移植预览版。SwiftUI + JavaScriptCore + AVPlayer，最低 iOS 17，支持 iPhone / iPad。
 
-目前支持：
+当前版本 0.2.0 新增独立 JS/WASM 计算、RSA/AES-GCM、二进制缓冲、内存 HLS 与媒体处理代理、mpv 引擎、HLS 离线包、REXENC 认证取钥、订阅、M3U/AppleCMS、Android 备份和 TMDB；重新设计发现、全局搜索与源管理界面。
 
-- 明文 JavaScript 内容源：WeBox.define 1.0/1.1、WidgetMetadata、XPTV getConfig/getCards/getTracks/getPlayinfo。
-- 链接、文件与文本导入；源全局配置；分类、动态筛选、分页、搜索、详情与选集。
-- AVPlayer 直播/点播、线路切换、AirPlay、画中画、播放进度与继续观看。
-- 收藏、观看历史、iOS JSON 备份导入导出、MP4/MOV/M4V 直链下载与本地播放。
-- 原生 HTTP 请求（请求头、Cookie、重定向、查询参数、正文）、Cheerio、CryptoJS 常用摘要/编码/AES、源隔离存储、JS 定时器。
-- 内置 APK 提供的公开 Big Buck Bunny 示例，可直接验证浏览 → 搜索 → 详情 → 播放。
-
-兼容范围详见 [移植说明](docs/PORTING.md)。这不是 Android 功能的完整等价实现。暂不支持 REXENC、订阅集合、Android 备份、mpv、内存 HLS、媒体处理器、binary、compute、RSA 与原生 TMDB 主机接口。仅安装信任的脚本；脚本与 App 同进程运行，恶意死循环不受异步调用超时保护。
+三个用户提供的 JS 源作为测试夹具回归验证，不预装站点。完整能力与验证边界见 [0.2 兼容说明](docs/COMPATIBILITY-0.2.md)。界面离线预览见 [preview.html](docs/ui-draft/preview.html)。
 
 ## 获取 IPA
 
-进入 [GitHub Actions](https://github.com/zhangx16/WeBox-for-IOS/actions/workflows/ios.yml)，打开最近成功的 `Build iOS`，下载 `WeBox-iOS-unsigned`，解压取得 `WeBox-unsigned.ipa`。
+优先从 [Releases](https://github.com/zhangx16/WeBox-for-IOS/releases) 下载对应版本 IPA。也可以进入 [GitHub Actions](https://github.com/zhangx16/WeBox-for-IOS/actions/workflows/ios.yml)，打开最近成功的 `Build iOS`，下载 `WeBox-iOS-unsigned`，解压取得 `WeBox-unsigned.ipa`。
 
 **这是未签名 IPA，不能直接安装到普通 iPhone。** 请使用自己的开发者证书 / 侧载工具签名后安装，或用 Xcode 选择自己的 Team 构建。仓库不包含签名证书，不提供已签名安装包。GitHub Artifact 下载需要登录，保留 30 天；可手动重新运行工作流生成。
 

@@ -49,3 +49,7 @@ The source's multiple card radii (8/10/12) are collapsed to main 16 / media 12 p
 Runtime: index.html, webox-icon.png. During review only: draft-kit.js and `window.DRAFT_KIT` block. The release preview `preview.html` excludes that review tooling and fixture state controls. Screenshots/audit JSON are recorded separately.
 
 Native screenshots must come from the iOS CI UI smoke test; HTML screenshots are explicitly labelled as design previews. Design audit does not establish native video playback or website compatibility.
+
+## Automated review executed
+
+Browser: local Chromium via Playwright, offline file URLs, widths 375 / 390 / 767 / 768 / 1024, light and dark. All ten width/theme combinations showed no horizontal overflow and no automatic contrast failures. audit.json is the exact capture; PNGs are HTML design previews. No browser server was started. Native simulator screenshots were not produced by this preview audit.
