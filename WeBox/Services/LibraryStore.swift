@@ -306,7 +306,7 @@ final class LibraryStore: ObservableObject {
                 let proxy = MediaProxy(source: source)
                 defer { proxy.close() }
                 let proxied = try await proxy.start()
-                var request = URLRequest(url: proxied)
+                let request = URLRequest(url: proxied)
                 let (file, response) = try await URLSession.shared.download(for: request)
                 guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { throw AppFailure("下载失败") }
                 try Task.checkCancellation()

@@ -16,6 +16,7 @@ final class MediaProxy {
     private var connections: [UUID: NWConnection] = [:]
     private var tasks: [UUID: Task<Void, Never>] = [:]
     private var stopped = false
+    private var startContinuation: CheckedContinuation<NWEndpoint.Port, Error>?
 
     init(source: PlaySource, session: URLSession = .shared) { self.source = source; self.session = session }
 
@@ -34,18 +35,9 @@ final class MediaProxy {
         let listener = try NWListener(using: parameters)
         self.listener = listener
         let port: NWEndpoint.Port = try await withCheckedThrowingContinuation { continuation in
-            var finished = false
-            listener.stateUpdateHandler = { [weak listener] state in
-                switch state {
-                case .ready:
-                    guard !finished, let port = listener?.port else { return }; finished = true
-                    continuation.resume(returning: port)
-                case .failed(let error):
-                    guard !finished else { return }; finished = true; continuation.resume(throwing: error)
-                case .cancelled:
-                    guard !finished else { return }; finished = true; continuation.resume(throwing: CancellationError())
-                default: break
-                }
+            self.startContinuation = continuation
+            listener.stateUpdateHandler = { [weak self] state in
+                Task { @MainActor in self?.listenerState(state) }
             }
             listener.newConnectionHandler = { [weak self] connection in
                 Task { @MainActor in self?.accept(connection) }
@@ -58,7 +50,18 @@ final class MediaProxy {
         return localURL(for: source.url, origin: address, root: true)
     }
 
+    private func listenerState(_ state: NWListener.State) {
+        guard let continuation = startContinuation else { return }
+        switch state {
+        case .ready:
+            guard let port = listener?.port else { return }; startContinuation = nil; continuation.resume(returning: port)
+        case .failed(let error): startContinuation = nil; continuation.resume(throwing: error)
+        case .cancelled: startContinuation = nil; continuation.resume(throwing: CancellationError())
+        default: break
+        }
+    }
     func close() {
+        startContinuation?.resume(throwing: CancellationError()); startContinuation = nil
         stopped = true
         listener?.cancel(); listener = nil; origin = nil
         for task in tasks.values { task.cancel() }; tasks.removeAll()

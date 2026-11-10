@@ -36,6 +36,7 @@ final class MPVPlaybackController: ObservableObject {
                 guard !Task.isCancelled, let self, let handle = self.handle else { return }
                 self.position = self.number("time-pos"); self.duration = self.number("duration")
                 while let event = mpv_wait_event(handle, 0), event.pointee.event_id != MPV_EVENT_NONE {
+                    if event.pointee.event_id == MPV_EVENT_FILE_LOADED, self.initialPosition > 0 { self.command(["seek", String(self.initialPosition), "absolute"]); self.initialPosition = 0 }
                     if event.pointee.event_id == MPV_EVENT_END_FILE, let data = event.pointee.data {
                         let end = data.assumingMemoryBound(to: mpv_event_end_file.self).pointee
                         if end.error < 0 { self.error = String(cString: mpv_error_string(end.error)) }
@@ -48,7 +49,7 @@ final class MPVPlaybackController: ObservableObject {
     private func open() {
         guard let url = initialURL, handle != nil else { return }
         command(["loadfile", url.isFileURL ? url.path : url.absoluteString, "replace"])
-        if initialPosition > 0 { command(["seek", String(initialPosition), "absolute"]) }
+
     }
     func togglePause() { paused.toggle(); set("pause", value: paused ? "yes" : "no") }
     func seek(_ seconds: Double) { command(["seek", String(seconds), "relative"]) }
@@ -59,7 +60,7 @@ final class MPVPlaybackController: ObservableObject {
     private func command(_ arguments: [String]) {
         guard let handle else { return }
         let strings = arguments.map { strdup($0) }; defer { for value in strings { free(value) } }
-        var pointers = strings.map { $0.map(UnsafePointer.init) }; pointers.append(nil)
+        var pointers: [UnsafePointer<CChar>?] = strings.map { value in value.map { UnsafePointer<CChar>($0) } }; pointers.append(nil)
         mpv_command(handle, &pointers)
     }
     func stop() {
